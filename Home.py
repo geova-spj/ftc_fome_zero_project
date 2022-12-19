@@ -11,7 +11,6 @@ from matplotlib import pyplot as plt
 from PIL import Image
 import plotly.express as px
 import plotly.graph_objects as go
-import seaborn as sns
 import streamlit as st
 from streamlit_folium import folium_static
 from streamlit_option_menu import option_menu

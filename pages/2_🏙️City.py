@@ -10,7 +10,6 @@ from folium.plugins import MarkerCluster
 from matplotlib import pyplot as plt
 from PIL import Image
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 from streamlit_folium import folium_static
 
@@ -82,39 +81,54 @@ COLORS = {
 def color_name(color_code):
     return COLORS[color_code]
 
+# Limpeza e organização
+
+def clean_code(df):
+    
+    data = df.copy()
+
+    # Renomeando os arquivos
+    data = rename_columns(data)
+
+    # Criação de colunas
+    data['country'] = data.loc[:,'country_code'].apply(lambda x: country_name(x))
+    data['price_type'] = data.loc[:, 'price_range'].apply(lambda x: create_price_tye(x))
+    data['color'] = data.loc[:, 'rating_color'].apply(lambda x: color_name(x))
+
+    # Pegando apenas o primeiro elemento do tipo de cozinha
+    data = data.loc[data['cuisines'].notnull(), :]
+    data['cuisines'] = data.loc[:, 'cuisines'].astype(str).apply(lambda x: x.split(',')[0])
+
+    # Removendo colunas desnecessárias
+    data = data.drop(columns = ['country_code','locality_verbose', 'switch_to_order_menu','rating_color'])
+
+    # Removendo dados duplicados
+    data = data.drop_duplicates(subset='restaurant_id', keep='first')
+    data = data.loc[data['average_cost_for_two'] != 0, :]
+
+    # Resetando o index
+    data = data.reset_index(drop = True)
+    
+    return data
+
+# Gráfico de barras cidade-país
+
+def bar_graph_city (data, x, y, color, text):
+    
+    plt.figure(figsize = (20,15))
+    fig = px.bar(data, x=x, y=y, template='plotly_white', color=color,
+           color_continuous_scale='YlGnBu', text=text)
+    fig.update_traces(textangle=0, textposition='inside')
+    
+    return fig
+
 #====================================================================================================
-# CARREGANDO ARQUIVO
+# CARREGANDO ARQUIVO E FAZENDO LIMPEZA
 #====================================================================================================
 
 df = pd.read_csv('zomato.csv')
 
-#====================================================================================================
-# ORGANIZAÇÃO E LIMPEZA
-#====================================================================================================
-
-data = df.copy()
-
-# Renomeando os arquivos
-data = rename_columns(data)
-
-# Criação de colunas
-data['country'] = data.loc[:,'country_code'].apply(lambda x: country_name(x))
-data['price_type'] = data.loc[:, 'price_range'].apply(lambda x: create_price_tye(x))
-data['color'] = data.loc[:, 'rating_color'].apply(lambda x: color_name(x))
-
-# Pegando apenas o primeiro elemento do tipo de cozinha
-data = data.loc[data['cuisines'].notnull(), :]
-data['cuisines'] = data.loc[:, 'cuisines'].astype(str).apply(lambda x: x.split(',')[0])
-
-# Removendo colunas desnecessárias
-data = data.drop(columns = ['country_code','locality_verbose', 'switch_to_order_menu','rating_color'])
-
-# Removendo dados duplicados
-data = data.drop_duplicates(subset='restaurant_id', keep='first')
-data = data.loc[data['average_cost_for_two'] != 0, :]
-
-# Resetando o index
-data = data.reset_index(drop = True)
+data = clean_code(df)
 
 #====================================================================================================
 # SIDEBAR - Topo
@@ -178,13 +192,9 @@ with st.container():
     df_final.columns=['País', 'Cidade', 'Qt. Restaurantes']
     df_final = df_final.sort_values('Qt. Restaurantes', ascending=True).reset_index(drop= True)
 
-    plt.figure(figsize = (30,30))
-    fig = px.bar(df_final, x='Qt. Restaurantes', y='Cidade', color = 'País', template='plotly_white', text='Qt. Restaurantes')
-    fig.update_traces(textangle=0)
-
+    fig = bar_graph_city(df_final, x='Qt. Restaurantes', y='Cidade', color='País', text='Qt. Restaurantes')
     st.plotly_chart(fig, use_container_width = True, theme='streamlit')
     
-
 with st.container():
     
     col1, col2= st.columns(2)
@@ -196,9 +206,7 @@ with st.container():
         contagem = data.loc[data['aggregate_rating'] < 2.5, ['city','country', 'restaurant_id']].groupby(['country','city']).count().sort_values('restaurant_id', ascending = False).reset_index().head(7)
         contagem.columns = ['País', 'Cidade', 'Qt. Restaurantes']
 
-        plt.figure(figsize = (30,30))
-        fig = px.bar(contagem, x='Cidade', y='Qt. Restaurantes', color = 'País', template='plotly_white', text='Qt. Restaurantes')
-        
+        fig = bar_graph_city(contagem, x='Cidade', y='Qt. Restaurantes', color='País', text='Qt. Restaurantes')
         st.plotly_chart(fig, use_container_width = True, theme='streamlit')
         
     with col2:
@@ -208,9 +216,7 @@ with st.container():
         contagem = data.loc[data['aggregate_rating'] > 4, ['city','country', 'restaurant_id']].groupby(['country','city']).count().sort_values('restaurant_id', ascending = False).reset_index().head(7)
         contagem.columns = ['País', 'Cidade', 'Qt. Restaurantes']
 
-        plt.figure(figsize = (15,30))
-        fig = px.bar(contagem, x='Cidade', y='Qt. Restaurantes', color = 'País', template='plotly_white', text='Qt. Restaurantes')
-        
+        fig = bar_graph_city(contagem, x='Cidade', y='Qt. Restaurantes', color='País', text='Qt. Restaurantes')
         st.plotly_chart(fig, use_container_width = True, theme='streamlit')
         
 with st.container():
@@ -218,11 +224,9 @@ with st.container():
     st.markdown('#### Top 10 cidades com maior diversidade gastronômica')
     
     contagem = data[['country', 'city', 'cuisines']].groupby(['country','city']).nunique().sort_values('cuisines', ascending = False).reset_index().head(10)
-    contagem.columns = ['País', 'Cidade', 'Qt. Culinárias']
+    contagem.columns = ['País', 'Cidade', 'Qt. Cozinhas']
     
-    plt.figure(figsize = (30,30))
-    fig = px.bar(contagem, x='Qt. Culinárias', y='Cidade', color = 'País', template='plotly_white', text='Qt. Culinárias')
-    
+    fig = bar_graph_city(contagem, x='Qt. Cozinhas', y='Cidade', color = 'País', text='Qt. Cozinhas')
     st.plotly_chart(fig, use_container_width = True, theme='streamlit')
 
 with st.container():
@@ -244,7 +248,6 @@ with st.container():
         
         st.dataframe(df3.style.format(subset=['Preço Médio - Prato p/ 2', 'Avaliação Média'], formatter="{:.2f}"))
 
-        
     with col2:
         
         st.markdown('#### Top 10 cidades mais baratas e melhor avaliadas')
@@ -257,17 +260,4 @@ with st.container():
         df3 = df3.sort_values('aggregate_rating', ascending = False).reset_index(drop=True)
         df3.columns = ['País', 'Cidade', 'Moeda', 'Preço Médio - Prato p/ 2', 'Avaliação Média']
         
-        st.dataframe(df3.style.format(subset=['Preço Médio - Prato p/ 2', 'Avaliação Média'], formatter="{:.2f}"))
-    
-        
-    
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        st.dataframe(df3.style.format(subset=['Preço Médio - Prato p/ 2', 'Avaliação Média'], formatter="{:.2f}")) 

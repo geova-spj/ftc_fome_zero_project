@@ -10,10 +10,8 @@ from folium.plugins import MarkerCluster
 from matplotlib import pyplot as plt
 from PIL import Image
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 from streamlit_folium import folium_static
-
 
 #====================================================================================================
 # FUNÇÕES
@@ -83,39 +81,55 @@ COLORS = {
 def color_name(color_code):
     return COLORS[color_code]
 
+# Limpeza e organização
+
+def clean_code(df):
+    
+    data = df.copy()
+
+    # Renomeando os arquivos
+    data = rename_columns(data)
+
+    # Criação de colunas
+    data['country'] = data.loc[:,'country_code'].apply(lambda x: country_name(x))
+    data['price_type'] = data.loc[:, 'price_range'].apply(lambda x: create_price_tye(x))
+    data['color'] = data.loc[:, 'rating_color'].apply(lambda x: color_name(x))
+
+    # Pegando apenas o primeiro elemento do tipo de cozinha
+    data = data.loc[data['cuisines'].notnull(), :]
+    data['cuisines'] = data.loc[:, 'cuisines'].astype(str).apply(lambda x: x.split(',')[0])
+
+    # Removendo colunas desnecessárias
+    data = data.drop(columns = ['country_code','locality_verbose', 'switch_to_order_menu','rating_color'])
+
+    # Removendo dados duplicados
+    data = data.drop_duplicates(subset='restaurant_id', keep='first')
+    data = data.loc[data['average_cost_for_two'] != 0, :]
+
+    # Resetando o index
+    data = data.reset_index(drop = True)
+    
+    return data
+
+# Gráfico de avaliação
+
+def bar_avaliacao(data, x, y, color, text):
+    
+    plt.figure(figsize = (12,5))
+    fig = px.bar(data, x=x, y=y, template='plotly_white',
+                 color = color, color_continuous_scale='YlGnBu', text=text)
+    fig.update(layout_coloraxis_showscale=False)
+    fig.update_traces(textangle=0, texttemplate='%{text:.2f}')
+    
+    return fig
+
 #====================================================================================================
-# CARREGANDO ARQUIVO
+# CARREGANDO ARQUIVO E FAZENDO LIMPEZA
 #====================================================================================================
 
 df = pd.read_csv('zomato.csv')
 
-#====================================================================================================
-# ORGANIZAÇÃO E LIMPEZA
-#====================================================================================================
-
-data = df.copy()
-
-# Renomeando os arquivos
-data = rename_columns(data)
-
-# Criação de colunas
-data['country'] = data.loc[:,'country_code'].apply(lambda x: country_name(x))
-data['price_type'] = data.loc[:, 'price_range'].apply(lambda x: create_price_tye(x))
-data['color'] = data.loc[:, 'rating_color'].apply(lambda x: color_name(x))
-
-# Pegando apenas o primeiro elemento do tipo de cozinha
-data = data.loc[data['cuisines'].notnull(), :]
-data['cuisines'] = data.loc[:, 'cuisines'].astype(str).apply(lambda x: x.split(',')[0])
-
-# Removendo colunas desnecessárias
-data = data.drop(columns = ['country_code','locality_verbose', 'switch_to_order_menu','rating_color'])
-
-# Removendo dados duplicados
-data = data.drop_duplicates(subset='restaurant_id', keep='first')
-data = data.loc[data['average_cost_for_two'] != 0, :]
-
-# Resetando o index
-data = data.reset_index(drop = True)
+data = clean_code(df)
 
 #====================================================================================================
 # SIDEBAR - Topo
@@ -175,7 +189,6 @@ with st.container():
 
     st.plotly_chart(fig, use_container_width = True, theme='streamlit')
     
-
 with st.container():
     
     col1, col2= st.columns(2)
@@ -187,12 +200,7 @@ with st.container():
         contagem = data[['cuisines', 'aggregate_rating']].groupby('cuisines').mean().sort_values('aggregate_rating', ascending = True).reset_index().head(10)
         contagem.columns=['Gastronomia', 'Avaliação Média']
 
-        plt.figure(figsize = (12,5))
-        fig = px.bar(contagem, x='Gastronomia', y='Avaliação Média', template='plotly_white',
-                     color ='Avaliação Média', color_continuous_scale='YlGnBu', text='Avaliação Média')
-        fig.update(layout_coloraxis_showscale=False)
-        fig.update_traces(textangle=0, texttemplate='%{text:.2f}')
-    
+        fig = bar_avaliacao(contagem, x='Gastronomia', y='Avaliação Média', color='Avaliação Média', text='Avaliação Média')
         st.plotly_chart(fig, use_container_width = True, theme='streamlit')
         
     with col2:
@@ -202,15 +210,9 @@ with st.container():
         contagem = data[['cuisines', 'aggregate_rating']].groupby('cuisines').mean().sort_values('aggregate_rating', ascending = False).reset_index().head(10)
         contagem.columns=['Gastronomia', 'Avaliação Média']
 
-        plt.figure(figsize = (12,5))
-        fig = px.bar(contagem, x='Gastronomia', y='Avaliação Média', template='plotly_white',
-                     color ='Avaliação Média', color_continuous_scale='YlGnBu', text='Avaliação Média')
-        fig.update(layout_coloraxis_showscale=False)
-        fig.update_traces(textangle=0, texttemplate='%{text:.2f}')
-
+        fig = bar_avaliacao(contagem, x='Gastronomia', y='Avaliação Média', color='Avaliação Média', text='Avaliação Média')
         st.plotly_chart(fig, use_container_width = True, theme='streamlit')
         
-
 with st.container():
     
     col1,col2 = st.columns(2)
@@ -224,30 +226,13 @@ with st.container():
         df1 = data.loc[linhas, ['cuisines', 'aggregate_rating']].groupby('cuisines').mean().sort_values('aggregate_rating', ascending=True).reset_index().head(20)
         df1.columns=['Culinárias', 'Avaliação Média']
         st.dataframe(df1.style.format(subset='Avaliação Média', formatter="{:.2f}"))
-       
-        
+              
     with col2:
         
         st.markdown('#### 20 Culinárias mais baratas e melhor avaliadas')
         st.text('Price Type: Cheap or Normal e Aggregate Rating >=4 ')
         
-        
         linhas= ((data['price_type'] == 'Normal') | (data['price_type'] == 'Cheap')) & (data['aggregate_rating'] >= 4)
         df1 = data.loc[linhas, ['cuisines', 'aggregate_rating']].groupby('cuisines').mean().sort_values('aggregate_rating', ascending=False).reset_index().head(20)
         df1.columns=['Culinárias', 'Avaliação Média']
         st.dataframe(df1.style.format(subset='Avaliação Média', formatter="{:.2f}"))
-        
-        
-    
-        
-    
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        

@@ -10,14 +10,12 @@ from folium.plugins import MarkerCluster
 from matplotlib import pyplot as plt
 from PIL import Image
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 from streamlit_folium import folium_static
 
 #====================================================================================================
 # FUNÇÕES
 #====================================================================================================
-
 
 # Renomear e padronizar as colunas
 
@@ -83,41 +81,43 @@ COLORS = {
 def color_name(color_code):
     return COLORS[color_code]
 
+# Limpeza e organização
+
+def clean_code(df):
+    
+    data = df.copy()
+
+    # Renomeando os arquivos
+    data = rename_columns(data)
+
+    # Criação de colunas
+    data['country'] = data.loc[:,'country_code'].apply(lambda x: country_name(x))
+    data['price_type'] = data.loc[:, 'price_range'].apply(lambda x: create_price_tye(x))
+    data['color'] = data.loc[:, 'rating_color'].apply(lambda x: color_name(x))
+
+    # Pegando apenas o primeiro elemento do tipo de cozinha
+    data = data.loc[data['cuisines'].notnull(), :]
+    data['cuisines'] = data.loc[:, 'cuisines'].astype(str).apply(lambda x: x.split(',')[0])
+
+    # Removendo colunas desnecessárias
+    data = data.drop(columns = ['country_code','locality_verbose', 'switch_to_order_menu','rating_color'])
+
+    # Removendo dados duplicados
+    data = data.drop_duplicates(subset='restaurant_id', keep='first')
+    data = data.loc[data['average_cost_for_two'] != 0, :]
+
+    # Resetando o index
+    data = data.reset_index(drop = True)
+    
+    return data
+
 #====================================================================================================
-# CARREGANDO ARQUIVO
+# CARREGANDO ARQUIVO E FAZENDO LIMPEZA
 #====================================================================================================
 
 df = pd.read_csv('zomato.csv')
 
-#====================================================================================================
-# ORGANIZAÇÃO E LIMPEZA
-#====================================================================================================
-
-data = df.copy()
-
-# Renomeando os arquivos
-data = rename_columns(data)
-
-# Criação de colunas
-data['country'] = data.loc[:,'country_code'].apply(lambda x: country_name(x))
-data['price_type'] = data.loc[:, 'price_range'].apply(lambda x: create_price_tye(x))
-data['color'] = data.loc[:, 'rating_color'].apply(lambda x: color_name(x))
-
-# Pegando apenas o primeiro elemento do tipo de cozinha
-data = data.loc[data['cuisines'].notnull(), :]
-data['cuisines'] = data.loc[:, 'cuisines'].astype(str).apply(lambda x: x.split(',')[0])
-
-# Removendo colunas desnecessárias
-data = data.drop(columns = ['country_code','locality_verbose', 'switch_to_order_menu','rating_color'])
-
-# Removendo dados duplicados
-data = data.drop_duplicates(subset='restaurant_id', keep='first')
-data = data.loc[data['average_cost_for_two'] != 0, :]
-
-# Resetando o index
-data = data.reset_index(drop = True)
-
-
+data = clean_code(df)
 
 #====================================================================================================
 # SIDEBAR - Topo
@@ -131,7 +131,6 @@ st.header ('O Melhor lugar para encontrar seu mais novo restaurante favorito!')
 
 st.subheader ('Temos as seguintes marcas dentro da nossa plataforma:')
 
-
 # Barra Lateral: Cabeçalho - Logo e nome da empresa
 image_path = 'fome_zero_logo_new.png'
 image = Image.open(image_path)
@@ -139,7 +138,6 @@ st.sidebar.image(image)
 
 st.sidebar.markdown ("<h3 style='text-align: center; color: red;'> World Gastronomic Best Experiences</h3>", unsafe_allow_html=True)
 st.sidebar.markdown ('''___''')
-
 
 #====================================================================================================
 # FILTROS SIDEBAR
@@ -166,39 +164,33 @@ data = data.loc[linhas, :]
 st.sidebar.markdown ('''___''')
 st.sidebar.markdown ('###### Powered by Comunidade DS')
 st.sidebar.markdown ('###### Data Analyst: Geová Silvério')
+
 #====================================================================================================
 # Layout - Visão Home
 #====================================================================================================
 
-    
-    
 with st.container():
     
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
-        
-        
+               
         contagem = data['restaurant_id'].nunique()
         col1.metric('Restaurantes Cadastrados', value = contagem)
-        
-        
+               
         contagem = data.loc[data['has_table_booking'] == 1,:].shape[0]
         col1.metric('Restaurantes que aceitam reserva', value = contagem)
         
     with col2:
-        
-        
+               
         contagem = data.loc[data['has_online_delivery'] == 1,:].shape[0]
         col2.metric('Restaurantes com pedido online', value = contagem)
-
         
         contagem = data.loc[data['is_delivering_now'] == 1,:].shape[0]
         col2.metric('Restaurantes que fazem entrega', value = contagem)
 
     with col3:
-        
-        
+              
         contagem = data['country'].nunique()
         col3.metric('Países Cadastrados', value = contagem)
     
@@ -212,7 +204,6 @@ with st.container():
         
         contagem = data['votes'].sum()
         col4.metric('Avaliações feitas na plataforma', value = contagem)
-
 
 with st.container():
 
@@ -240,30 +231,12 @@ with st.container():
                                             max_width= len(f"{location_info['restaurant_name']}")*20)).add_to(cluster)
 
     # Exibindo o mapa
-    folium_static(mapa, width = 1024, height = 600)
-        
+    folium_static(mapa, width = 1024, height = 600)  
 
 with st.container():
-    
-   
+       
     st.markdown('#### Top 10 restaurantes')
     
     df1 = data[['restaurant_id', 'restaurant_name', 'country', 'city', 'cuisines', 'currency', 'average_cost_for_two', 'aggregate_rating', 'votes']].sort_values(['aggregate_rating', 'restaurant_id'], ascending = [False, True]).reset_index(drop=True).head(10)
     df1.columns=['ID','Nome','País','Cidade','Culinária', 'Moeda', 'Preço Médio - Prato p/2', 'Avaliação Média', 'Qt. Votos']
-    st.dataframe(df1.style.format(subset=['Preço Médio - Prato p/2', 'Avaliação Média'], formatter="{:.2f}"))
-        
-        
-        
-    
-        
-    
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+    st.dataframe(df1.style.format(subset=['Preço Médio - Prato p/2', 'Avaliação Média'], formatter="{:.2f}")) 
